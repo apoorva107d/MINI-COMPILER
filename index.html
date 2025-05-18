@@ -14,33 +14,30 @@
     <script type="text/babel">
         const { useState } = React;
 
-        // Sample data simulating compiler output
-        const sampleCode = `int x = 4;\nint y = 100;\nif (x < y) {\n    x = x - 1;\n}\nwhile (x < 15) {\n    x = x + 2;\n}`;
+        const sampleCode = `int x = 5;\nint y = 10;\nif (x < y) {\n    x = x + 1;\n}\nwhile (x < 15) {\n    x = x + 2;\n}`;
         const sampleTokens = [
-            ["INT", "int"], ["ID", "x"], ["EQ", "="], ["NUMBER", 5], ["SEMI", ";"],
-            ["INT", "int"], ["ID", "y"], ["EQ", "="], ["NUMBER", 10], ["SEMI", ";"],
-            ["IF", "if"], ["LPAREN", "("], ["ID", "x"], ["LT", "<"], ["ID", "y"], ["RPAREN", ")"],
-            ["LBRACE", "{"], ["ID", "x"], ["EQ", "="], ["ID", "x"], ["PLUS", "+"], ["NUMBER", 1], ["SEMI", ";"], ["RBRACE", "}"],
-            ["WHILE", "while"], ["LPAREN", "("], ["ID", "x"], ["LT", "<"], ["NUMBER", 15], ["RPAREN", ")"],
-            ["LBRACE", "{"], ["ID", "x"], ["EQ", "="], ["ID", "x"], ["PLUS", "+"], ["NUMBER", 2], ["SEMI", ";"], ["RBRACE", "}"]
+            ["INT", "int"], ["ID", "x"], ["EQUALS", "="], ["NUMBER", 5], ["SEMICOLON", ";"],
+            ["INT", "int"], ["ID", "y"], ["EQUALS", "="], ["NUMBER", 10], ["SEMICOLON", ";"],
+            ["IF", "if"], ["LPAREN", "("], ["ID", "x"], ["LESS", "<"], ["ID", "y"], ["RPAREN", ")"], ["LBRACE", "{"],
+            ["ID", "x"], ["EQUALS", "="], ["ID", "x"], ["PLUS", "+"], ["NUMBER", 1], ["SEMICOLON", ";"], ["RBRACE", "}"],
+            ["WHILE", "while"], ["LPAREN", "("], ["ID", "x"], ["LESS", "<"], ["NUMBER", 15], ["RPAREN", ")"], ["LBRACE", "{"],
+            ["ID", "x"], ["EQUALS", "="], ["ID", "x"], ["PLUS", "+"], ["NUMBER", 2], ["SEMICOLON", ";"], ["RBRACE", "}"]
         ];
         const sampleAST = [
-            { type: "decl", id: "x", value: 5 },
-            { type: "decl", id: "y", value: 10 },
-            { type: "if", condition: { place: "t0", type: "int" }, statements: [
-                { type: "assign", id: "x", value: { place: "t1", type: "int" } }
-            ]},
-            { type: "while", condition: { place: "t2", type: "int" }, statements: [
-                { type: "assign", id: "x", value: { place: "t3", type: "int" } }
-            ]}
+            ["decl", "int", "x", 5],
+            ["decl", "int", "y", 10],
+            ["if", ["<", "x", "y", "t0"], [["assign", "x", ["+", "x", 1, "t1"]]]],
+            ["while", ["<", "x", 15, "t2"], [["assign", "x", ["+", "x", 2, "t3"]]]]
         ];
         const sampleSymbols = [
-            { name: "x", type: "int", scope: 0 },
-            { name: "y", type: "int", scope: 0 }
+            {"name": "x", "type": "int", "scope": 0, "value": 5},
+            {"name": "y", "type": "int", "scope": 0, "value": 10}
         ];
         const sampleTAC = `x = 5\ny = 10\nt0 = x < y\nif t0 != 0 goto L0\ngoto L1\nlabel L0\nt1 = x + 1\nx = t1\nlabel L1\nlabel L2\nt2 = x < 15\nif t2 != 0 goto L3\ngoto L4\nlabel L3\nt3 = x + 2\nx = t3\ngoto L2\nlabel L4`;
+        const sampleOptimizedTAC = `x = 5\ny = 10\nt0 = x < y\nif t0 != 0 goto L0\ngoto L1\nlabel L0\nx = 6\nlabel L1\nlabel L2\nt2 = x < 15\nif t2 != 0 goto L3\ngoto L4\nlabel L3\nt3 = x + 2\nx = t3\ngoto L2\nlabel L4`;
+        const sampleAssembly = `mov x, 5\nmov y, 10\nmov eax, x\nsub eax, y\nmov t0, eax\ncmp t0, 0\njne L0\njmp L1\nL0:\nmov x, 6\nL1:\nL2:\nmov eax, x\nsub eax, 15\nmov t2, eax\ncmp t2, 0\njne L3\njmp L4\nL3:\nmov eax, x\nadd eax, 2\nmov x, eax\njmp L2\nL4:`;
+        const sampleExecutionResults = JSON.stringify({"x": 16, "y": 10, "t0": 1, "t1": 6, "t2": 0, "t3": 16}, null, 2);
 
-        // Compiler Phase Component
         function CompilerPhase({ title, input, output, buttonText, onRun }) {
             return (
                 <div className="mb-8 p-6 bg-white rounded-lg shadow-md">
@@ -48,73 +45,44 @@
                     <div className="flex space-x-4">
                         <div className="flex-1">
                             <h3 className="text-lg font-semibold mb-2">Input</h3>
-                            <textarea
-                                className="w-full h-40 p-2 border rounded-md"
-                                value={input}
-                                readOnly
-                            ></textarea>
+                            <textarea className="w-full h-40 p-2 border rounded-md" value={input} readOnly></textarea>
                         </div>
                         <div className="flex-1">
                             <h3 className="text-lg font-semibold mb-2">Output</h3>
-                            <pre className="w-full h-40 p-2 border rounded-md bg-gray-50 overflow-auto">
-                                {output}
-                            </pre>
+                            <pre className="w-full h-40 p-2 border rounded-md bg-gray-50 overflow-auto">{output}</pre>
                         </div>
                     </div>
-                    <button
-                        className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-                        onClick={onRun}
-                    >
+                    <button className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600" onClick={onRun}>
                         {buttonText}
                     </button>
                 </div>
             );
         }
 
-        // Main App Component
         function App() {
             const [code, setCode] = useState(sampleCode);
             const [tokens, setTokens] = useState(JSON.stringify(sampleTokens, null, 2));
             const [ast, setAst] = useState(JSON.stringify(sampleAST, null, 2));
             const [symbols, setSymbols] = useState(JSON.stringify(sampleSymbols, null, 2));
             const [tac, setTac] = useState(sampleTAC);
+            const [optimizedTac, setOptimizedTac] = useState(sampleOptimizedTAC);
+            const [assembly, setAssembly] = useState(sampleAssembly);
+            const [executionResults, setExecutionResults] = useState(sampleExecutionResults);
 
             return (
                 <div className="container mx-auto p-4">
                     <h1 className="text-3xl font-bold text-center mb-8">Mini Compiler UI</h1>
-                    <CompilerPhase
-                        title="Lexical Analysis"
-                        input={code}
-                        output={tokens}
-                        buttonText="Run Lexer"
-                        onRun={() => alert("Simulating lexical analysis...")}
-                    />
-                    <CompilerPhase
-                        title="Syntax Analysis"
-                        input={JSON.stringify(sampleTokens, null, 2)}
-                        output={ast}
-                        buttonText="Run Parser"
-                        onRun={() => alert("Simulating syntax analysis...")}
-                    />
-                    <CompilerPhase
-                        title="Semantic Analysis"
-                        input={JSON.stringify(sampleAST, null, 2)}
-                        output={symbols}
-                        buttonText="Run Semantic Analysis"
-                        onRun={() => alert("Simulating semantic analysis...")}
-                    />
-                    <CompilerPhase
-                        title="TAC Generation"
-                        input={JSON.stringify(sampleAST, null, 2)}
-                        output={tac}
-                        buttonText="Run TAC Generation"
-                        onRun={() => alert("Simulating TAC generation...")}
-                    />
+                    <CompilerPhase title="Lexical Analysis" input={code} output={tokens} buttonText="Run Lexer" onRun={() => alert("Simulating lexical analysis...")} />
+                    <CompilerPhase title="Syntax Analysis" input={JSON.stringify(sampleTokens, null, 2)} output={ast} buttonText="Run Parser" onRun={() => alert("Simulating syntax analysis...")} />
+                    <CompilerPhase title="Semantic Analysis" input={JSON.stringify(sampleAST, null, 2)} output={symbols} buttonText="Run Semantic Analysis" onRun={() => alert("Simulating semantic analysis...")} />
+                    <CompilerPhase title="TAC Generation" input={JSON.stringify(sampleAST, null, 2)} output={tac} buttonText="Run TAC Generation" onRun={() => alert("Simulating TAC generation...")} />
+                    <CompilerPhase title="Code Optimization" input={tac} output={optimizedTac} buttonText="Run Optimization" onRun={() => alert("Simulating optimization...")} />
+                    <CompilerPhase title="Target Code Generation" input={optimizedTac} output={assembly} buttonText="Run Code Generation" onRun={() => alert("Simulating code generation...")} />
+                    <CompilerPhase title="Code Execution" input={assembly} output={executionResults} buttonText="Run Execution" onRun={() => alert("Simulating execution...")} />
                 </div>
             );
         }
 
-        // Render the app
         ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
